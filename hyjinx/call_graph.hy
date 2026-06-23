@@ -2,12 +2,17 @@
 Static call-graph extraction from Hy and Python source files.
 
 Given a .hy or .py source file, extracts all definitions, call edges,
-and imports — without importing the module or triggering side effects.
+and imports — without importing the target module.
 
-For .hy files: uses hy.reader.read-many + hy_compile to produce a Python
-AST, then walks it with ast.NodeVisitor. Reader forms are also parsed to
-detect defmacro (which compile to hy.macros.macro calls, not FunctionDef)
-and defmethod (which appear as FunctionDef with multimethod decorator).
+By default uses HyReader (the standard reader) which resolves macro
+dependencies at read time (e.g. hyrule, hyjinx.macros). Use safe=True
+to switch to HySafeReader which restricts macros to the default set
+for zero read-time side effects.
+
+For .hy files: uses hy_compile to produce a Python AST, then walks it
+with ast.NodeVisitor. Reader forms are also parsed to detect defmacro
+(which compile to hy.macros.macro calls, not FunctionDef) and defmethod
+(which appear as FunctionDef with multimethod decorator).
 
 For .py files: uses ast.parse directly.
 
@@ -28,8 +33,9 @@ fully resolved in the compiled AST.
 (import toolz [first second last take drop identity reduce])
 (import functools [partial])
 
-(import hy [unmangle mangle])
-(import hy.reader [read-many])
+(import hy [unmangle mangle read-many])
+(import hy.reader.hy_reader [HyReader])
+(import hy.hy_inspect [HySafeReader])
 (import hy.compiler [hy-compile])
 (import hy.models [Expression Symbol Keyword])
 
@@ -367,13 +373,14 @@ fully resolved in the compiled AST.
 
 ;; ---- File-type specific extraction -----------------------------------------
 
-(defn _hy-call-graph [path]
+(defn _hy-call-graph [path * [safe False]]
   "Extract call graph from a .hy source file.
   Uses reader-level parsing for macro/method detection, then hy_compile
-  for AST walking."
+  for AST walking. If safe, uses HySafeReader (default macros only)."
   (let [source (.read-text path)
+        reader (when safe (HySafeReader))
         reader-forms (try
-                       (list (read-many source :skip-shebang True))
+                       (list (read-many source :skip-shebang True :reader reader))
                        (except [Exception]
                          (return (CallGraph :file (str (.resolve (Path path)))
                                           :language "hy"
@@ -446,10 +453,11 @@ fully resolved in the compiled AST.
 
 ;; ---- Public API ------------------------------------------------------------
 
-(defn call-graph [path]
+(defn call-graph [path * [safe False]]
   "Extract definitions, call edges, and imports from a source file.
   No imports are performed — purely static analysis.
   Supports .hy and .py files.
+  For .hy files, if safe is True, uses HySafeReader (default macros only).
 
   Returns a CallGraph with:
     - file: absolute path
@@ -464,7 +472,7 @@ fully resolved in the compiled AST.
     (unless (.exists p)
       (raise (FileNotFoundError f"File not found: {path}")))
     (match (.lstrip p.suffix ".")
-      "hy" (_hy-call-graph p)
+      "hy" (_hy-call-graph p :safe safe)
       "py" (_py-call-graph p)
       ext (raise (ValueError f"Unsupported file type: .{ext}")))))
 

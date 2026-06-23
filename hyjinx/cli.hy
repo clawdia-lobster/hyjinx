@@ -264,13 +264,14 @@ Commands:
        (click.option "--callers-of" :default None :help "Show callers of this function")
        (click.option "--callees-of" :default None :help "Show callees of this function")
        (click.option "--path" :nargs 2 :default None :help "Find call path from SOURCE to TARGET")
-       (click.option "--warnings" :is-flag True :help "Show only warnings/errors")]
-  graph [target json dead callers-of callees-of path warnings]
+       (click.option "--warnings" :is-flag True :help "Show only warnings/errors")
+       (click.option "--safe" :is-flag True :help "Use HySafeReader (default macros only, zero side effects)")]
+  graph [target json dead callers-of callees-of path warnings safe]
   "Extract and analyse the call graph of a module or file.\
 \
 Static analysis — no imports, no side effects. Shows definitions,\
 call edges, imports, and supports reachability analysis."
-  (let [g (call-graph target)]
+  (let [g (call-graph target :safe safe)]
     (when warnings
       (if g.warnings
         (do
